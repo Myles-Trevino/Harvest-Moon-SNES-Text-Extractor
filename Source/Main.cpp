@@ -12,6 +12,16 @@
 #include <sstream>
 
 
+constexpr int start{0x1B0200};
+constexpr int end{0x1DBFF8};
+constexpr int maximum_line_width{28};
+constexpr int name_reference_token{0xFFFC};
+constexpr int count_reference_token{0xFFFD};
+constexpr int entry_end_token_1{0xFFFE};
+constexpr int entry_end_token_2{0xFFFF};
+constexpr int paragraph_separator{0xA2};
+
+
 std::unordered_map<uint16_t, char> character_map
 {
 	{0x0, 'a'},
@@ -78,13 +88,14 @@ std::unordered_map<uint16_t, char> character_map
 	{0x3B, '('},
 	{0x3C, ')'},
 	{0x3D, '%'},
-	{0x3E, '_'},
+	{0x3E, '-'},
 	{0x3F, '$'},
 	{0x40, '&'},
 	{0x41, ':'},
 	{0x42, '@'},
 
 	{0xB1, ' '},
+
 	{0xB2, '0'},
 	{0xB3, '1'},
 	{0xB4, '2'},
@@ -97,20 +108,24 @@ std::unordered_map<uint16_t, char> character_map
 	{0xBB, '9'}
 };
 
+std::unordered_map<int, int> skip_map
+{
+	{211, 60},
+	{419, 13},
+	{651, 54},
+	{855, 69}
+};
+
+std::unordered_map<int, std::string> count_reference_map
+{
+	{1, "Dog"},
+	{2, "Horse"},
+};
 
 
 // Main.
 int main()
 {
-	constexpr int start{0x1B0200};
-	constexpr int end{0x1DBFF8};
-	constexpr int maximum_line_width{28};
-	constexpr int reference_token_1{0xFFFC};
-	constexpr int reference_token_2{0xFFFD};
-	constexpr int entry_end_token_1{0xFFFF};
-	constexpr int entry_end_token_2{0xFFFE};
-	constexpr int paragraph_separator{0xA2};
-
 	// Load the file.
 	std::ifstream input_file{"Harvest Moon.smc", std::ifstream::binary};
 	if(!input_file) throw std::runtime_error{"Input file not found.\n"};
@@ -124,20 +139,18 @@ int main()
 	bool new_entry{true};
 	int entry_number{1};
 	int line_width{};
-	int ignore_count{};
 
 	while(input_file.tellg() < end)
 	{
+		// Skip undesired areas.
+		const auto skip_map_find_result{skip_map.find(entry_number)};
+
+		if(new_entry && skip_map_find_result != skip_map.end())
+			for(int i{}; i < skip_map_find_result->second; ++i)
+				input_file.read(reinterpret_cast<char*>(&character_code), 2);
+
 		// Read in the next character (two bytes).
-		input_file.read(reinterpret_cast<char*>(&character_code), 2); // 2 bytes.
-
-		// Ignore the next character if desired.
-		if(ignore_count > 0)
-		{
-			--ignore_count;
-			continue;
-		}
-
+		input_file.read(reinterpret_cast<char*>(&character_code), 2);
 		++line_width;
 
 		// Put a new entry marker if appropriate.
@@ -145,18 +158,27 @@ int main()
 		if(new_entry) output_file<<"--- Entry "<<entry_number<<" ---\n";
 
 		// If this is a reference token...
-		while(character_code == reference_token_1 || character_code == reference_token_2)
+		while(character_code == name_reference_token || character_code == count_reference_token)
 		{
-			input_file.ignore(4);
-			input_file.read(reinterpret_cast<char*>(&character_code), 2); // 2 bytes.
-			output_file<<"<REF>";
-			line_width += 5;
+			uint16_t id, reference_width;
+			input_file.read(reinterpret_cast<char*>(&reference_width), 2);
+			input_file.read(reinterpret_cast<char*>(&id), 2);
+
+			for(int i{}; i < reference_width; ++i)
+			{
+				output_file<<"#";
+				++line_width;
+			}
+
+			// output_file<<"("<<std::hex<<std::uppercase<<character_code<<":"<<std::dec<<id<<")";
+			input_file.read(reinterpret_cast<char*>(&character_code), 2);
 		}
 
 		// If this is an entry end marker...
 		if(character_code == entry_end_token_1 || character_code == entry_end_token_2)
 		{
-			if(character_code == entry_end_token_2) ignore_count = 1;
+			if(character_code == entry_end_token_1)
+				input_file.read(reinterpret_cast<char*>(&character_code), 2);
 
 			++entry_number;
 			new_entry = true;
@@ -173,10 +195,10 @@ int main()
 		}
 
 		// Output the character if there is a mapping for it.
-		const auto find_result{character_map.find(character_code)};
-		if(find_result != character_map.end())
+		const auto character_map_find_result{character_map.find(character_code)};
+		if(character_map_find_result != character_map.end())
 		{
-			const char character{find_result->second};
+			const char character{character_map_find_result->second};
 			output_file << character;
 			new_entry = false;
 			first_entry = false;
