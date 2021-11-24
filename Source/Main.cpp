@@ -116,12 +116,6 @@ std::unordered_map<int, int> skip_map
 	{855, 69}
 };
 
-std::unordered_map<int, std::string> count_reference_map
-{
-	{1, "Dog"},
-	{2, "Horse"},
-};
-
 
 // Main.
 int main()
@@ -170,7 +164,6 @@ int main()
 				++line_width;
 			}
 
-			// output_file<<"("<<std::hex<<std::uppercase<<character_code<<":"<<std::dec<<id<<")";
 			input_file.read(reinterpret_cast<char*>(&character_code), 2);
 		}
 
@@ -189,7 +182,7 @@ int main()
 		// If this is a paragraph separator...
 		if(character_code == paragraph_separator)
 		{
-			output_file << "\n";
+			output_file<<"\n";
 			line_width = 0;
 			continue;
 		}
@@ -199,7 +192,7 @@ int main()
 		if(character_map_find_result != character_map.end())
 		{
 			const char character{character_map_find_result->second};
-			output_file << character;
+			output_file<<character;
 			new_entry = false;
 			first_entry = false;
 		}
